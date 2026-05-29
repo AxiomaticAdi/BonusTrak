@@ -5,6 +5,7 @@ import { StoreProvider } from '@/lib/store'
 import { Toaster } from '@/components/ui/sonner'
 import { SupabaseProvider } from '@/components/auth/supabase-provider'
 import { AuthGate } from '@/components/auth/auth-gate'
+import { LinkedGate } from '@/components/auth/linked-gate'
 import { OfflineIndicator } from '@/components/offline-indicator'
 import './globals.css'
 
@@ -43,8 +44,10 @@ export default function RootLayout({
         <SupabaseProvider>
           <AuthGate>
             <StoreProvider>
-              <OfflineIndicator />
-              {children}
+              <LinkedGate>
+                <OfflineIndicator />
+                {children}
+              </LinkedGate>
             </StoreProvider>
           </AuthGate>
         </SupabaseProvider>

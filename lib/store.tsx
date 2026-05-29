@@ -25,7 +25,7 @@ function genId(): string {
 	return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
-interface UserDataRow {
+interface UserRow {
 	data: Partial<AppData> | null;
 	pace_mode: string | null;
 }
@@ -33,6 +33,11 @@ interface UserDataRow {
 interface StoreValue {
 	data: AppData;
 	hydrated: boolean;
+	/**
+	 * True when the signed-in login has no `logins` mapping to a person (or the
+	 * mapped person row is gone). The login can see no data; linking is admin-only.
+	 */
+	unlinked: boolean;
 	/** False when the browser reports no network; UI shows a sync banner. */
 	online: boolean;
 	paceMode: PaceMode;
@@ -50,11 +55,14 @@ const StoreContext = createContext<StoreValue | null>(null);
 
 export function StoreProvider({ children }: { children: ReactNode }) {
 	const { session } = useAuth();
-	const userId = session?.user.id ?? null;
+	// The raw Supabase auth identity (a *login*). Distinct from the resolved
+	// person id (a *user*) held in userIdRef below.
+	const authUserId = session?.user.id ?? null;
 
 	const [data, setData] = useState<AppData>(EMPTY);
 	const [paceMode, setPaceModeState] = useState<PaceMode>("trailing");
 	const [hydrated, setHydrated] = useState(false);
+	const [unlinked, setUnlinked] = useState(false);
 	const [online, setOnline] = useState(true);
 
 	// Always-current snapshot so saves/retries send the LATEST blob (never stale).
@@ -63,13 +71,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 		dataRef.current = data;
 	}, [data]);
 
+	// Resolved person id (users.id) this login maps to, or null when unlinked.
+	// Held in a ref so saves/retries target the right row even across re-renders.
+	const userIdRef = useRef<string | null>(null);
+
 	const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const dirtyRef = useRef(false); // unsaved local edits exist
 	const applyingServerRef = useRef(false); // next data change came from the server, not the user
 	const loadIdRef = useRef(0); // guards against overlapping loads
 
 	// --- Apply a server row to local state ---------------------------------
-	const applyRow = useCallback((row: UserDataRow) => {
+	const applyRow = useCallback((row: UserRow) => {
 		applyingServerRef.current = true;
 		const parsed = (row.data ?? {}) as Partial<AppData>;
 		setData({
@@ -83,18 +95,48 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 	}, []);
 
 	// --- Load from Supabase -------------------------------------------------
+	// Two-step: resolve the login -> person mapping, then load that person's row.
 	const load = useCallback(async () => {
-		if (!userId) return;
+		if (!authUserId) return;
 		if (dirtyRef.current) return; // never clobber unsaved local edits
 		const myLoadId = ++loadIdRef.current;
 
-		const { data: row, error } = await supabase
-			.from("user_data")
-			.select("data, pace_mode")
-			.eq("user_id", userId)
+		// Resolve which person (users.id) this login maps to.
+		const { data: loginRow, error: loginErr } = await supabase
+			.from("logins")
+			.select("user_id")
+			.eq("auth_user_id", authUserId)
 			.maybeSingle();
 
 		if (myLoadId !== loadIdRef.current) return; // a newer load superseded this one
+
+		if (loginErr) {
+			console.error("[bonustrak] login lookup failed:", loginErr);
+			toast.error("Couldn't load your data.");
+			setHydrated(true);
+			return;
+		}
+
+		if (!loginRow) {
+			// Authenticated with Google but not linked to a person yet. RLS denies
+			// all data; an admin must insert the logins mapping by hand.
+			userIdRef.current = null;
+			setUnlinked(true);
+			setHydrated(true);
+			return;
+		}
+
+		const resolvedUserId = (loginRow as { user_id: string }).user_id;
+		userIdRef.current = resolvedUserId;
+		setUnlinked(false);
+
+		const { data: row, error } = await supabase
+			.from("users")
+			.select("data, pace_mode")
+			.eq("id", resolvedUserId)
+			.maybeSingle();
+
+		if (myLoadId !== loadIdRef.current) return;
 
 		if (error) {
 			console.error("[bonustrak] load failed:", error);
@@ -103,43 +145,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 			return;
 		}
 
-		if (row) {
-			applyRow(row as UserDataRow);
+		if (!row) {
+			// Mapped, but the person row is gone (e.g. admin deleted it mid-session).
+			// Treat as unlinked rather than a broken, silently-no-op editable session.
+			userIdRef.current = null;
+			setUnlinked(true);
 			setHydrated(true);
 			return;
 		}
 
-		// No row yet: create the default row for this account.
-		const { error: insertErr } = await supabase
-			.from("user_data")
-			.insert({ user_id: userId });
-		if (insertErr) {
-			// Another tab likely inserted first — reselect rather than assume empty.
-			const { data: reRow } = await supabase
-				.from("user_data")
-				.select("data, pace_mode")
-				.eq("user_id", userId)
-				.maybeSingle();
-			if (myLoadId !== loadIdRef.current) return;
-			if (reRow) {
-				applyRow(reRow as UserDataRow);
-			} else {
-				applyingServerRef.current = true;
-				setData(EMPTY);
-				setPaceModeState("trailing");
-			}
-		} else {
-			applyingServerRef.current = true;
-			setData(EMPTY);
-			setPaceModeState("trailing");
-		}
+		applyRow(row as UserRow);
 		setHydrated(true);
-	}, [userId, applyRow]);
+	}, [authUserId, applyRow]);
 
-	// Load whenever the signed-in user changes.
+	// Reset and reload whenever the signed-in login changes. Clearing data/pace/
+	// unlinked here (not just hydrated) ensures one account's state can never
+	// render — or be saved into — under another account if a load later fails.
 	useEffect(() => {
 		setHydrated(false);
+		setUnlinked(false);
 		dirtyRef.current = false;
+		userIdRef.current = null;
+		if (saveTimer.current) clearTimeout(saveTimer.current);
+		applyingServerRef.current = true;
+		setData(EMPTY);
+		setPaceModeState("trailing");
 		void load();
 	}, [load]);
 
@@ -161,23 +191,33 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
 	// --- Save to Supabase ---------------------------------------------------
 	// Always sends dataRef.current (latest), so a retry cannot resurrect a stale
-	// blob over a newer one. Retries up to MAX_SAVE_RETRIES, then toasts.
+	// blob over a newer one. The save UPDATEs an existing users row (the admin
+	// pre-creates it; the client never inserts). targetUid is captured when the
+	// save is scheduled so a retry can't write to a row we no longer own after an
+	// account/link switch. update().select("id") lets us detect a zero-row update
+	// (RLS-blocked or row deleted) that PostgREST reports without an error.
 	const flushData = useCallback(
-		async (attempt = 0) => {
-			if (!userId) return;
-			const { error } = await supabase
-				.from("user_data")
-				.upsert({
-					user_id: userId,
+		async (attempt = 0, targetUid: string | null = userIdRef.current) => {
+			if (!targetUid) return;
+			if (userIdRef.current !== targetUid) return; // auth/link changed since scheduled
+
+			const { data: updated, error } = await supabase
+				.from("users")
+				.update({
 					data: dataRef.current,
 					updated_at: new Date().toISOString(),
-				});
-			if (error) {
-				console.error("[bonustrak] save failed:", error);
+				})
+				.eq("id", targetUid)
+				.select("id");
+
+			const noRows = !updated || updated.length === 0;
+			if (error || noRows) {
+				console.error("[bonustrak] save failed:", error ?? "0 rows updated");
+				if (userIdRef.current !== targetUid) return; // don't retry a row we no longer own
 				if (attempt < MAX_SAVE_RETRIES) {
 					if (saveTimer.current) clearTimeout(saveTimer.current);
 					saveTimer.current = setTimeout(
-						() => void flushData(attempt + 1),
+						() => void flushData(attempt + 1, targetUid),
 						SAVE_DEBOUNCE_MS * 2,
 					);
 				} else {
@@ -189,12 +229,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 			}
 			dirtyRef.current = false;
 		},
-		[userId],
+		[],
 	);
 
 	// Debounced persist whenever the USER changes data (after hydration).
 	useEffect(() => {
-		if (!hydrated || !userId) return;
+		if (!hydrated || !userIdRef.current) return;
 		if (applyingServerRef.current) {
 			applyingServerRef.current = false; // change came from a server load; don't echo it back
 			return;
@@ -205,7 +245,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 		return () => {
 			if (saveTimer.current) clearTimeout(saveTimer.current);
 		};
-	}, [data, hydrated, userId, flushData]);
+	}, [data, hydrated, flushData]);
 
 	// Track online/offline. On reconnect, flush pending edits or reload.
 	useEffect(() => {
@@ -227,25 +267,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 	}, [load, flushData]);
 
 	// --- Mutations (public interface unchanged) -----------------------------
-	// pace_mode uses update().eq() (not a partial upsert) so it can never touch
-	// the data column. The row exists post-hydration (load inserts it).
-	const setPaceMode = useCallback(
-		(m: PaceMode) => {
-			setPaceModeState(m);
-			if (!userId) return;
-			void supabase
-				.from("user_data")
-				.update({ pace_mode: m, updated_at: new Date().toISOString() })
-				.eq("user_id", userId)
-				.then(({ error }) => {
-					if (error) {
-						console.error("[bonustrak] pace save failed:", error);
-						toast.error("Couldn't save pace mode.");
-					}
-				});
-		},
-		[userId],
-	);
+	// pace_mode uses update().eq() (not the debounced data path) so it can never
+	// touch the data column. select("id") detects a zero-row update; pace stays
+	// fire-and-forget (a transient failure just toasts, no retry/offline replay).
+	const setPaceMode = useCallback((m: PaceMode) => {
+		setPaceModeState(m);
+		const uid = userIdRef.current;
+		if (!uid) return;
+		void supabase
+			.from("users")
+			.update({ pace_mode: m, updated_at: new Date().toISOString() })
+			.eq("id", uid)
+			.select("id")
+			.then(({ data: updated, error }) => {
+				if (error || !updated || updated.length === 0) {
+					console.error(
+						"[bonustrak] pace save failed:",
+						error ?? "0 rows updated",
+					);
+					toast.error("Couldn't save pace mode.");
+				}
+			});
+	}, []);
 
 	const setGoal = useCallback((g: Goal) => {
 		setData((prev) => ({ ...prev, goal: g }));
@@ -306,6 +349,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 	const value: StoreValue = {
 		data,
 		hydrated,
+		unlinked,
 		online,
 		paceMode,
 		setPaceMode,
