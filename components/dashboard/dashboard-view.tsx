@@ -40,6 +40,14 @@ export function DashboardView() {
             {formatShort(data.goal.startDate)} – {formatShort(data.goal.endDate)} · {metrics.elapsedWorkdays} workdays elapsed
           </p>
         </div>
+        <LogHoursDialog
+          trigger={
+            <Button size="lg" className="shrink-0 shadow-sm">
+              <Plus className="size-5" />
+              Log hours
+            </Button>
+          }
+        />
       </div>
 
       <ProgressCard metrics={metrics} />
@@ -47,18 +55,6 @@ export function DashboardView() {
       <div className="grid gap-5 md:grid-cols-2">
         <PaceCard metrics={metrics} />
         <ForecastCard metrics={metrics} />
-      </div>
-
-      {/* Prominent log-hours action, sticky on mobile */}
-      <div className="sticky bottom-4 z-10 mt-2 flex justify-center md:static md:justify-start">
-        <LogHoursDialog
-          trigger={
-            <Button size="lg" className="w-full shadow-lg md:w-auto">
-              <Plus className="size-5" />
-              Log hours
-            </Button>
-          }
-        />
       </div>
     </div>
   )
