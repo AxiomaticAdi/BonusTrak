@@ -38,7 +38,8 @@
 - **Modify** `app/settings/page.tsx` — render `SettingsContent` instead of the three sections directly.
 - **Modify** `package.json` — add `@supabase/supabase-js` dependency.
 - **Modify** `CLAUDE.md` — update the "no backend" / localStorage sections.
-- **External (Supabase dashboard, Task 2):** create `user_data` table + RLS policy, enable email auth, disable public sign-ups, create the two users.
+- **Create** `supabase/migrations/20260529200202_create_user_data.sql` — canonical DB schema (table + RLS), applied by hand via the dashboard SQL Editor. *(Already written.)*
+- **External (Supabase dashboard, Task 2):** apply the migration (`user_data` table + RLS policy), enable email auth, disable public sign-ups, create the two users.
 
 ---
 
@@ -91,25 +92,16 @@ In the Supabase dashboard, create a project. Note the **Project URL** and **anon
 
 - [ ] **Step 2: Create the table and RLS policy**
 
-In the dashboard SQL editor, run:
-
-```sql
-create table user_data (
-  user_id    uuid primary key references auth.users(id) on delete cascade,
-  data       jsonb not null default '{"goal":null,"entries":[],"timeOff":[]}',
-  pace_mode  text  not null default 'trailing',
-  updated_at timestamptz not null default now()
-);
-
-alter table user_data enable row level security;
-
-create policy "own row" on user_data
-  for all
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
-```
+The schema is captured as a migration file (the canonical source of truth):
+`supabase/migrations/20260529200202_create_user_data.sql`. This project applies
+migrations **by hand**: open the dashboard **SQL Editor → New query**, paste the
+**entire contents of that file**, and **Run**.
 
 Expected: "Success. No rows returned."
+
+If the schema ever changes, update that file (or add a new timestamped migration in
+`supabase/migrations/`) so it stays the source of truth — do not let dashboard-only
+edits drift from it.
 
 - [ ] **Step 3: Configure auth**
 
