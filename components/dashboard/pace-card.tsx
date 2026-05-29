@@ -5,6 +5,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { cn } from "@/lib/utils"
 import { fmt, type Metrics } from "@/lib/calculations"
 import { useStore } from "@/lib/store"
+import { CoverageNote } from "./coverage-note"
 
 export function PaceCard({ metrics }: { metrics: Metrics }) {
   const { paceMode, setPaceMode } = useStore()
@@ -41,6 +42,8 @@ export function PaceCard({ metrics }: { metrics: Metrics }) {
           colorClass={ahead ? "bg-success" : "bg-danger"}
         />
         <Bar label="Required pace" value={required} max={max} colorClass="bg-primary" />
+
+        <CoverageNote metrics={metrics} />
 
         <p className="text-pretty text-sm leading-relaxed text-muted-foreground">
           {required <= 0 ? (
