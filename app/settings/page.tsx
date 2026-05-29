@@ -1,9 +1,7 @@
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { GoalSection } from "@/components/settings/goal-section"
-import { TimeOffSection } from "@/components/settings/time-off-section"
-import { HoursLogSection } from "@/components/settings/hours-log-section"
+import { SettingsContent } from "@/components/settings/settings-content"
 
 export default function SettingsPage() {
   return (
@@ -19,9 +17,7 @@ export default function SettingsPage() {
         </div>
       </header>
       <main className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 py-6 pb-16">
-        <GoalSection />
-        <TimeOffSection />
-        <HoursLogSection />
+        <SettingsContent />
       </main>
     </div>
   )
