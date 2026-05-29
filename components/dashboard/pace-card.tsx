@@ -42,6 +42,13 @@ export function PaceCard({ metrics }: { metrics: Metrics }) {
         />
         <Bar label="Required pace" value={required} max={max} colorClass="bg-primary" />
 
+        {metrics.uncoveredWorkdays > 0 && (
+          <p className="text-xs text-muted-foreground">
+            Pace based on logged days only · ~{Math.max(1, Math.round(metrics.uncoveredWorkdays / 5))} weeks
+            not yet logged
+          </p>
+        )}
+
         <p className="text-pretty text-sm leading-relaxed text-muted-foreground">
           {required <= 0 ? (
             <>You&apos;ve reached your goal — no further hours required.</>

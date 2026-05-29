@@ -10,7 +10,8 @@ import {
 	type ReactNode,
 } from "react";
 import { toast } from "sonner";
-import type { AppData, Goal, HoursEntry, PaceMode, TimeOff } from "./types";
+import type { AppData, Goal, HoursEntry, HoursEntryInput, PaceMode, TimeOff } from "./types";
+import { isValidEntry } from "./calculations";
 import { supabase } from "./supabase";
 import { useAuth } from "@/components/auth/supabase-provider";
 
@@ -43,8 +44,8 @@ interface StoreValue {
 	paceMode: PaceMode;
 	setPaceMode: (m: PaceMode) => void;
 	setGoal: (g: Goal) => void;
-	addEntry: (e: Omit<HoursEntry, "id">) => void;
-	updateEntry: (id: string, patch: Partial<Omit<HoursEntry, "id">>) => void;
+	addEntry: (e: HoursEntryInput) => void;
+	updateEntry: (id: string, next: HoursEntryInput) => void;
 	deleteEntry: (id: string) => void;
 	addTimeOff: (t: Omit<TimeOff, "id">) => void;
 	updateTimeOff: (id: string, patch: Partial<Omit<TimeOff, "id">>) => void;
@@ -84,9 +85,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 	const applyRow = useCallback((row: UserRow) => {
 		applyingServerRef.current = true;
 		const parsed = (row.data ?? {}) as Partial<AppData>;
+		// Filter entries through the shape guard so a stale old-shape row (we don't
+		// migrate — the user re-enters) can't crash the span math downstream.
 		setData({
 			goal: parsed.goal ?? null,
-			entries: Array.isArray(parsed.entries) ? parsed.entries : [],
+			entries: Array.isArray(parsed.entries) ? parsed.entries.filter(isValidEntry) : [],
 			timeOff: Array.isArray(parsed.timeOff) ? parsed.timeOff : [],
 		});
 		if (row.pace_mode === "trailing" || row.pace_mode === "ytd") {
@@ -294,24 +297,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 		setData((prev) => ({ ...prev, goal: g }));
 	}, []);
 
-	const addEntry = useCallback((e: Omit<HoursEntry, "id">) => {
+	const addEntry = useCallback((e: HoursEntryInput) => {
 		setData((prev) => ({
 			...prev,
-			entries: [...prev.entries, { ...e, id: genId() }],
+			entries: [...prev.entries, { ...e, id: genId() } as HoursEntry],
 		}));
 	}, []);
 
-	const updateEntry = useCallback(
-		(id: string, patch: Partial<Omit<HoursEntry, "id">>) => {
-			setData((prev) => ({
-				...prev,
-				entries: prev.entries.map((e) =>
-					e.id === id ? { ...e, ...patch } : e,
-				),
-			}));
-		},
-		[],
-	);
+	// Whole-entry replace (not a shallow merge): a discriminated union can't be
+	// safely Partial-patched across kinds, since a kind change would leave a stale
+	// anchor field behind. The edit dialog always supplies a complete entry.
+	const updateEntry = useCallback((id: string, next: HoursEntryInput) => {
+		setData((prev) => ({
+			...prev,
+			entries: prev.entries.map((e) =>
+				e.id === id ? ({ ...next, id } as HoursEntry) : e,
+			),
+		}));
+	}, []);
 
 	const deleteEntry = useCallback((id: string) => {
 		setData((prev) => ({

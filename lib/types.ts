@@ -9,19 +9,34 @@ export interface Goal {
   endDate: string
 }
 
-export type HoursEntryKind = "daily" | "weekly" | "monthly"
+export type HoursEntryKind = "day" | "week" | "month"
 
-export interface HoursEntry {
+interface HoursEntryBase {
   id: string
-  /**
-   * Representative date for the entry, ISO "YYYY-MM-DD".
-   * For weekly entries this is the week-ending date; for monthly it is any day in the month.
-   */
-  date: string
   hours: number
-  kind: HoursEntryKind
   note?: string
 }
+
+/**
+ * An entry is a span of time carrying a total number of hours. The hours are
+ * distributed across the workdays inside that span (see lib/calculations.ts).
+ * The anchor field differs per kind so an invalid shape is unrepresentable:
+ *  - day:   `date`      a single ISO "YYYY-MM-DD" day
+ *  - week:  `weekStart` the Monday of the week, ISO "YYYY-MM-DD"
+ *  - month: `month`     the calendar month, "YYYY-MM"
+ */
+export type HoursEntry =
+  | (HoursEntryBase & { kind: "day"; date: string })
+  | (HoursEntryBase & { kind: "week"; weekStart: string })
+  | (HoursEntryBase & { kind: "month"; month: string })
+
+/**
+ * A new/edited entry, before an id is assigned. A plain `Omit<HoursEntry, "id">`
+ * would collapse the union to its common keys and drop the per-kind anchor, so we
+ * distribute the Omit across each member to keep the discriminant intact.
+ */
+type DistributiveOmit<T, K extends keyof any> = T extends unknown ? Omit<T, K> : never
+export type HoursEntryInput = DistributiveOmit<HoursEntry, "id">
 
 export type TimeOffType = "vacation" | "personal" | "holiday" | "other"
 
@@ -49,7 +64,7 @@ export const TIME_OFF_LABELS: Record<TimeOffType, string> = {
 }
 
 export const HOURS_KIND_LABELS: Record<HoursEntryKind, string> = {
-  daily: "Daily",
-  weekly: "Weekly",
-  monthly: "Monthly",
+  day: "Day",
+  week: "Week",
+  month: "Month",
 }

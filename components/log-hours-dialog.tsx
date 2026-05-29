@@ -15,46 +15,71 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { useStore } from "@/lib/store"
-import type { HoursEntryKind } from "@/lib/types"
-import { todayISO } from "@/lib/dates"
+import { HOURS_KIND_LABELS, type HoursEntry, type HoursEntryInput, type HoursEntryKind } from "@/lib/types"
+import { mondayOf, todayISO, formatWeekRange, formatMonth } from "@/lib/dates"
+import { entryLabel, entrySpan, findOverlap } from "@/lib/calculations"
 import { toast } from "sonner"
 
-const KINDS: { value: HoursEntryKind; label: string; dateLabel: string }[] = [
-  { value: "daily", label: "Day", dateLabel: "Date" },
-  { value: "weekly", label: "Week", dateLabel: "Week ending" },
-  { value: "monthly", label: "Month", dateLabel: "Any date in month" },
-]
+const KINDS: HoursEntryKind[] = ["day", "week", "month"]
 
 export function LogHoursDialog({ trigger }: { trigger: ReactNode }) {
-  const { addEntry } = useStore()
+  const { addEntry, data } = useStore()
   const [open, setOpen] = useState(false)
-  const [kind, setKind] = useState<HoursEntryKind>("daily")
+  const [kind, setKind] = useState<HoursEntryKind>("day")
   const [date, setDate] = useState(todayISO())
+  const [weekStart, setWeekStart] = useState(mondayOf(todayISO()))
+  const [month, setMonth] = useState(todayISO().slice(0, 7))
   const [hours, setHours] = useState("")
 
   function reset() {
-    setKind("daily")
+    setKind("day")
     setDate(todayISO())
+    setWeekStart(mondayOf(todayISO()))
+    setMonth(todayISO().slice(0, 7))
     setHours("")
   }
 
-  function submit() {
+  function buildInput(): HoursEntryInput | null {
     const value = Number.parseFloat(hours)
     if (!Number.isFinite(value) || value <= 0) {
       toast.error("Enter a valid number of hours.")
-      return
+      return null
     }
-    if (!date) {
-      toast.error("Pick a date.")
-      return
+    switch (kind) {
+      case "day":
+        if (!date) {
+          toast.error("Pick a date.")
+          return null
+        }
+        return { kind: "day", date, hours: value }
+      case "week":
+        if (!weekStart) {
+          toast.error("Pick a week.")
+          return null
+        }
+        return { kind: "week", weekStart, hours: value }
+      case "month":
+        if (!/^\d{4}-\d{2}$/.test(month)) {
+          toast.error("Pick a month.")
+          return null
+        }
+        return { kind: "month", month, hours: value }
     }
-    addEntry({ date, hours: value, kind })
-    toast.success(`Logged ${value} hours.`)
+  }
+
+  function submit() {
+    const input = buildInput()
+    if (!input) return
+    const conflict = findOverlap(entrySpan(input as HoursEntry), data.entries)
+    addEntry(input)
+    if (conflict) {
+      toast.warning(`Logged ${input.hours} hours — but this overlaps your "${entryLabel(conflict)}" entry, so hours may double-count.`)
+    } else {
+      toast.success(`Logged ${input.hours} hours.`)
+    }
     reset()
     setOpen(false)
   }
-
-  const dateLabel = KINDS.find((k) => k.value === kind)?.dateLabel ?? "Date"
 
   return (
     <Dialog
@@ -82,17 +107,22 @@ export function LogHoursDialog({ trigger }: { trigger: ReactNode }) {
               className="w-full"
             >
               {KINDS.map((k) => (
-                <ToggleGroupItem key={k.value} value={k.value} className="flex-1">
-                  {k.label}
+                <ToggleGroupItem key={k} value={k} className="flex-1">
+                  {HOURS_KIND_LABELS[k]}
                 </ToggleGroupItem>
               ))}
             </ToggleGroup>
           </div>
 
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="entry-date">{dateLabel}</Label>
-            <Input id="entry-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          </div>
+          <EntryAnchorField
+            kind={kind}
+            date={date}
+            weekStart={weekStart}
+            month={month}
+            onDate={setDate}
+            onWeekStart={setWeekStart}
+            onMonth={setMonth}
+          />
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="entry-hours">Hours</Label>
@@ -121,5 +151,62 @@ export function LogHoursDialog({ trigger }: { trigger: ReactNode }) {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/**
+ * The anchor control, shaped to the selected kind: a date picker for a day, a
+ * Monday-snapped date picker for a week (native <input type="week"> is unsupported
+ * in Firefox), and a month picker for a month.
+ */
+export function EntryAnchorField({
+  kind,
+  date,
+  weekStart,
+  month,
+  onDate,
+  onWeekStart,
+  onMonth,
+  idPrefix = "entry",
+}: {
+  kind: HoursEntryKind
+  date: string
+  weekStart: string
+  month: string
+  onDate: (v: string) => void
+  onWeekStart: (v: string) => void
+  onMonth: (v: string) => void
+  idPrefix?: string
+}) {
+  if (kind === "day") {
+    return (
+      <div className="flex flex-col gap-2">
+        <Label htmlFor={`${idPrefix}-date`}>Date</Label>
+        <Input id={`${idPrefix}-date`} type="date" value={date} onChange={(e) => onDate(e.target.value)} />
+      </div>
+    )
+  }
+  if (kind === "week") {
+    return (
+      <div className="flex flex-col gap-2">
+        <Label htmlFor={`${idPrefix}-week`}>Week</Label>
+        <Input
+          id={`${idPrefix}-week`}
+          type="date"
+          value={weekStart}
+          onChange={(e) => e.target.value && onWeekStart(mondayOf(e.target.value))}
+        />
+        <p className="text-xs text-muted-foreground">Week of {formatWeekRange(weekStart)}</p>
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      <Label htmlFor={`${idPrefix}-month`}>Month</Label>
+      <Input id={`${idPrefix}-month`} type="month" value={month} onChange={(e) => onMonth(e.target.value)} />
+      {/^\d{4}-\d{2}$/.test(month) && (
+        <p className="text-xs text-muted-foreground">{formatMonth(month)}</p>
+      )}
+    </div>
   )
 }

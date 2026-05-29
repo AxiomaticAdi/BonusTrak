@@ -27,6 +27,13 @@ export function ForecastCard({ metrics }: { metrics: Metrics }) {
           </div>
         </div>
 
+        {metrics.uncoveredWorkdays > 0 && (
+          <p className="text-xs text-muted-foreground">
+            Based on logged days only · ~{Math.max(1, Math.round(metrics.uncoveredWorkdays / 5))} weeks
+            not yet logged
+          </p>
+        )}
+
         <div
           className={cn(
             "flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium",

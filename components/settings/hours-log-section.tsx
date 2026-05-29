@@ -28,16 +28,17 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { useStore } from "@/lib/store"
-import { HOURS_KIND_LABELS, type HoursEntry, type HoursEntryKind } from "@/lib/types"
-import { formatShort } from "@/lib/dates"
-import { fmt } from "@/lib/calculations"
+import { HOURS_KIND_LABELS, type HoursEntry, type HoursEntryInput, type HoursEntryKind } from "@/lib/types"
+import { mondayOf, todayISO } from "@/lib/dates"
+import { entryLabel, entrySpan, findOverlap, fmt } from "@/lib/calculations"
+import { EntryAnchorField } from "@/components/log-hours-dialog"
 import { toast } from "sonner"
 
-const KINDS: HoursEntryKind[] = ["daily", "weekly", "monthly"]
+const KINDS: HoursEntryKind[] = ["day", "week", "month"]
 
 export function HoursLogSection() {
   const { data, updateEntry, deleteEntry } = useStore()
-  const sorted = [...data.entries].sort((a, b) => b.date.localeCompare(a.date))
+  const sorted = [...data.entries].sort((a, b) => entrySpan(b).start.localeCompare(entrySpan(a).start))
   const total = data.entries.reduce((s, e) => s + (Number.isFinite(e.hours) ? e.hours : 0), 0)
 
   return (
@@ -67,7 +68,7 @@ export function HoursLogSection() {
                 <div className="flex flex-col gap-1">
                   <span className="font-semibold tabular-nums">{fmt(e.hours)} hrs</span>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-muted-foreground">{formatShort(e.date)}</span>
+                    <span className="text-sm text-muted-foreground">{entryLabel(e)}</span>
                     <Badge variant="outline" className="text-xs font-normal">
                       {HOURS_KIND_LABELS[e.kind]}
                     </Badge>
@@ -76,9 +77,14 @@ export function HoursLogSection() {
                 <div className="flex items-center gap-1">
                   <EntryDialog
                     initial={e}
-                    onSave={(patch) => {
-                      updateEntry(e.id, patch)
-                      toast.success("Entry updated.")
+                    onSave={(next) => {
+                      const conflict = findOverlap(entrySpan(next as HoursEntry), data.entries, e.id)
+                      updateEntry(e.id, next)
+                      if (conflict) {
+                        toast.warning(`Saved — but this overlaps your "${entryLabel(conflict)}" entry, so hours may double-count.`)
+                      } else {
+                        toast.success("Entry updated.")
+                      }
                     }}
                     trigger={
                       <Button variant="ghost" size="icon" aria-label="Edit entry">
@@ -101,7 +107,7 @@ export function HoursLogSection() {
                       <AlertDialogHeader>
                         <AlertDialogTitle>Delete this entry?</AlertDialogTitle>
                         <AlertDialogDescription>
-                          {fmt(e.hours)} hours on {formatShort(e.date)} will be removed.
+                          {fmt(e.hours)} hours ({entryLabel(e)}) will be removed.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
@@ -134,16 +140,20 @@ function EntryDialog({
 }: {
   trigger: React.ReactNode
   initial: HoursEntry
-  onSave: (patch: Partial<Omit<HoursEntry, "id">>) => void
+  onSave: (next: HoursEntryInput) => void
 }) {
   const [open, setOpen] = useState(false)
   const [kind, setKind] = useState<HoursEntryKind>(initial.kind)
-  const [date, setDate] = useState(initial.date)
+  const [date, setDate] = useState(initial.kind === "day" ? initial.date : todayISO())
+  const [weekStart, setWeekStart] = useState(initial.kind === "week" ? initial.weekStart : mondayOf(todayISO()))
+  const [month, setMonth] = useState(initial.kind === "month" ? initial.month : todayISO().slice(0, 7))
   const [hours, setHours] = useState(String(initial.hours))
 
   function reset() {
     setKind(initial.kind)
-    setDate(initial.date)
+    setDate(initial.kind === "day" ? initial.date : todayISO())
+    setWeekStart(initial.kind === "week" ? initial.weekStart : mondayOf(todayISO()))
+    setMonth(initial.kind === "month" ? initial.month : todayISO().slice(0, 7))
     setHours(String(initial.hours))
   }
 
@@ -153,7 +163,19 @@ function EntryDialog({
       toast.error("Enter a valid number of hours.")
       return
     }
-    onSave({ kind, date, hours: value })
+    let next: HoursEntryInput
+    if (kind === "day") {
+      if (!date) return toast.error("Pick a date.")
+      next = { kind: "day", date, hours: value }
+    } else if (kind === "week") {
+      if (!weekStart) return toast.error("Pick a week.")
+      next = { kind: "week", weekStart, hours: value }
+    } else {
+      if (!/^\d{4}-\d{2}$/.test(month)) return toast.error("Pick a month.")
+      next = { kind: "month", month, hours: value }
+    }
+    if (initial.note !== undefined) next = { ...next, note: initial.note }
+    onSave(next)
     setOpen(false)
   }
 
@@ -187,10 +209,16 @@ function EntryDialog({
               ))}
             </ToggleGroup>
           </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="edit-date">Date</Label>
-            <Input id="edit-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          </div>
+          <EntryAnchorField
+            kind={kind}
+            date={date}
+            weekStart={weekStart}
+            month={month}
+            onDate={setDate}
+            onWeekStart={setWeekStart}
+            onMonth={setMonth}
+            idPrefix="edit"
+          />
           <div className="flex flex-col gap-2">
             <Label htmlFor="edit-hours">Hours</Label>
             <Input

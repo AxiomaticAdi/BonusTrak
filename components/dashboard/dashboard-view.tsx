@@ -1,6 +1,6 @@
 "use client"
 
-import { Plus } from "lucide-react"
+import { Plus, Clock } from "lucide-react"
 import { useStore } from "@/lib/store"
 import { computeMetrics } from "@/lib/calculations"
 import { formatShort } from "@/lib/dates"
@@ -49,6 +49,17 @@ export function DashboardView() {
           }
         />
       </div>
+
+      {metrics.lastCoveredDate && metrics.trailingGapWorkdays >= 5 && (
+        <div className="flex items-center gap-2.5 rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm">
+          <Clock className="size-4 shrink-0 text-muted-foreground" />
+          <span className="text-muted-foreground">
+            You haven&apos;t logged since{" "}
+            <span className="font-medium text-foreground">{formatShort(metrics.lastCoveredDate)}</span> ·{" "}
+            {metrics.trailingGapWorkdays} workdays unlogged
+          </span>
+        </div>
+      )}
 
       <ProgressCard metrics={metrics} />
 
