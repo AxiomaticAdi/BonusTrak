@@ -12,17 +12,15 @@ if (!url || !anonKey) {
 
 /**
  * Singleton browser client. The anon key is safe client-side because RLS
- * enforces per-user access. detectSessionInUrl completes the magic-link
- * exchange on redirect.
+ * enforces per-user access.
  *
- * flowType: "implicit" (instead of the default PKCE) lets a magic link be
- * opened in a DIFFERENT browser or device from the one that requested it.
- * PKCE stores a code verifier client-side, which would otherwise force the
- * link to be opened in the same browser that requested it.
+ * Default (PKCE) flow: correct for Google OAuth, where the provider redirects
+ * back to the SAME browser that initiated sign-in — so the code verifier PKCE
+ * stores client-side is always available. detectSessionInUrl completes the
+ * OAuth `?code=` exchange on that redirect.
  */
 export const supabase = createClient(url, anonKey, {
 	auth: {
-		flowType: "implicit",
 		persistSession: true,
 		autoRefreshToken: true,
 		detectSessionInUrl: true,

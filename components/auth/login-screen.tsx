@@ -1,38 +1,35 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-type Status = "idle" | "sending" | "sent" | "error";
-
 export function LoginScreen() {
-	const [email, setEmail] = useState("");
-	const [status, setStatus] = useState<Status>("idle");
+	const [status, setStatus] = useState<"idle" | "redirecting" | "error">(
+		"idle",
+	);
 	const [error, setError] = useState<string | null>(null);
 
-	async function sendLink(e: FormEvent) {
-		e.preventDefault();
-		setStatus("sending");
+	async function signIn() {
+		setStatus("redirecting");
 		setError(null);
-		// shouldCreateUser: false — an unknown/typo'd email cannot silently create
-		// an account; Supabase returns an error instead (belt-and-suspenders with
-		// the dashboard "disable sign-ups" setting).
-		const { error } = await supabase.auth.signInWithOtp({
-			email: email.trim(),
+		// PKCE flow: Google redirects back to this same browser, where
+		// detectSessionInUrl completes the exchange. prompt=select_account lets a
+		// user choose which Google account to use (and lets an admin capture
+		// multiple auth identities on one machine) instead of silently reusing the
+		// last Google session.
+		const { error } = await supabase.auth.signInWithOAuth({
+			provider: "google",
 			options: {
-				shouldCreateUser: false,
-				emailRedirectTo: window.location.origin,
+				redirectTo: window.location.origin,
+				queryParams: { prompt: "select_account" },
 			},
 		});
+		// On success the browser navigates to Google; we only get here on error.
 		if (error) {
 			setError(error.message);
 			setStatus("error");
-		} else {
-			setStatus("sent");
 		}
 	}
 
@@ -42,40 +39,19 @@ export function LoginScreen() {
 				<CardHeader>
 					<CardTitle className="text-center">BonusTrak</CardTitle>
 				</CardHeader>
-				<CardContent>
-					{status === "sent" ? (
-						<p className="text-center text-sm text-muted-foreground">
-							Check your email for a sign-in link, then return here. Open the
-							link in this same browser.
-						</p>
-					) : (
-						<form onSubmit={sendLink} className="space-y-4">
-							<p className="text-sm text-muted-foreground">
-								Enter your email to get a magic sign-in link. Syncs your hours
-								across devices.
-							</p>
-							<div className="space-y-2">
-								<Label htmlFor="email">Email</Label>
-								<Input
-									id="email"
-									type="email"
-									required
-									autoFocus
-									value={email}
-									onChange={(e) => setEmail(e.target.value)}
-									placeholder="you@example.com"
-								/>
-							</div>
-							<Button
-								type="submit"
-								className="w-full"
-								disabled={status === "sending"}
-							>
-								{status === "sending" ? "Sending…" : "Send magic link"}
-							</Button>
-							{error && <p className="text-sm text-destructive">{error}</p>}
-						</form>
-					)}
+				<CardContent className="space-y-4">
+					<p className="text-sm text-muted-foreground">
+						Sign in with Google to track your billable hours.
+					</p>
+					<Button
+						type="button"
+						className="w-full"
+						onClick={signIn}
+						disabled={status === "redirecting"}
+					>
+						{status === "redirecting" ? "Redirecting…" : "Continue with Google"}
+					</Button>
+					{error && <p className="text-sm text-destructive">{error}</p>}
 				</CardContent>
 			</Card>
 		</div>
