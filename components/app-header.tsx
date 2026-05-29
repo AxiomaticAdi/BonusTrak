@@ -1,8 +1,9 @@
 "use client"
 
 import Link from "next/link"
-import { Settings, TrendingUp } from "lucide-react"
+import { LogOut, Settings, TrendingUp } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { supabase } from "@/lib/supabase"
 
 export function AppHeader({ showSettings = true }: { showSettings?: boolean }) {
   return (
@@ -14,13 +15,29 @@ export function AppHeader({ showSettings = true }: { showSettings?: boolean }) {
           </span>
           <span className="text-base font-semibold tracking-tight">BonusTrak</span>
         </Link>
-        {showSettings && (
-          <Button asChild variant="ghost" size="icon" aria-label="Open settings">
-            <Link href="/settings">
-              <Settings className="size-5" />
-            </Link>
+        <div className="flex items-center gap-1">
+          {showSettings && (
+            <Button
+              asChild
+              variant="ghost"
+              size="icon"
+              aria-label="Open settings"
+            >
+              <Link href="/settings">
+                <Settings className="size-5" />
+              </Link>
+            </Button>
+          )}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="Sign out"
+            onClick={() => void supabase.auth.signOut()}
+          >
+            <LogOut className="size-5" />
           </Button>
-        )}
+        </div>
       </div>
     </header>
   )
