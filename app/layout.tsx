@@ -3,6 +3,9 @@ import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { StoreProvider } from '@/lib/store'
 import { Toaster } from '@/components/ui/sonner'
+import { SupabaseProvider } from '@/components/auth/supabase-provider'
+import { AuthGate } from '@/components/auth/auth-gate'
+import { OfflineIndicator } from '@/components/offline-indicator'
 import './globals.css'
 
 const geist = Geist({ subsets: ['latin'], variable: '--font-geist-sans' })
@@ -37,7 +40,14 @@ export default function RootLayout({
   return (
     <html lang="en" className={`bg-background ${geist.variable} ${geistMono.variable}`}>
       <body className="font-sans antialiased">
-        <StoreProvider>{children}</StoreProvider>
+        <SupabaseProvider>
+          <AuthGate>
+            <StoreProvider>
+              <OfflineIndicator />
+              {children}
+            </StoreProvider>
+          </AuthGate>
+        </SupabaseProvider>
         <Toaster />
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
