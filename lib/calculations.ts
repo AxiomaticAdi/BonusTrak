@@ -27,6 +27,11 @@ export interface Metrics {
   variance: number
   variancePct: number
   status: PaceStatus
+
+  /** Mon–Sun weeks in [goalStart, today] with ≥1 logged entry */
+  coveredWeeks: number
+  /** Total Mon–Sun weeks overlapping [goalStart, today] */
+  totalElapsedWeeks: number
 }
 
 /** Build the set of ISO dates covered by time-off entries. */
@@ -58,6 +63,39 @@ function sumHours(entries: HoursEntry[], startISO: string, endISO: string): numb
     if (e.date >= startISO && e.date <= endISO) return acc + (Number.isFinite(e.hours) ? e.hours : 0)
     return acc
   }, 0)
+}
+
+/** The Monday on or before the given ISO date. */
+function mondayOf(iso: string): string {
+  const day = parseISODate(iso).getDay()
+  const offset = day === 0 ? 6 : day - 1
+  return addDays(iso, -offset)
+}
+
+/**
+ * Count Mon–Sun weeks overlapping [startISO, endISO] and how many of them
+ * contain at least one logged entry. A week is "covered" if any entry's
+ * representative `date` falls within its Mon–Sun span.
+ */
+export function coveredWeekCount(
+  entries: HoursEntry[],
+  startISO: string,
+  endISO: string,
+): { coveredWeeks: number; totalElapsedWeeks: number } {
+  if (startISO > endISO) return { coveredWeeks: 0, totalElapsedWeeks: 0 }
+  let weekStart = mondayOf(startISO)
+  let coveredWeeks = 0
+  let totalElapsedWeeks = 0
+  let guard = 0
+  while (weekStart <= endISO && guard < 10_000) {
+    const weekEnd = addDays(weekStart, 6)
+    totalElapsedWeeks++
+    if (entries.some((e) => e.date >= weekStart && e.date <= weekEnd))
+      coveredWeeks++
+    weekStart = addDays(weekStart, 7)
+    guard++
+  }
+  return { coveredWeeks, totalElapsedWeeks }
 }
 
 export function computeMetrics(data: AppData, goal: Goal, paceMode: PaceMode, now = todayISO()): Metrics {
@@ -95,6 +133,12 @@ export function computeMetrics(data: AppData, goal: Goal, paceMode: PaceMode, no
   if (variancePct >= 1) status = "ahead"
   else if (variancePct < -1) status = "behind"
 
+  const { coveredWeeks, totalElapsedWeeks } = coveredWeekCount(
+    data.entries,
+    goal.startDate,
+    today,
+  )
+
   return {
     target,
     completed,
@@ -112,6 +156,8 @@ export function computeMetrics(data: AppData, goal: Goal, paceMode: PaceMode, no
     variance,
     variancePct,
     status,
+    coveredWeeks,
+    totalElapsedWeeks,
   }
 }
 
