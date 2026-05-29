@@ -1,3 +1,8 @@
+> **SUPERSEDED (2026-05-29).** This week-bucketing approach was never wired into the
+> app and has been replaced by the span-based data model (entries are time spans;
+> coverage and pace are measured in workdays, not Mon–Sun weeks). Kept for history.
+> See the implementation in `lib/calculations.ts` (`entrySpan`, `coveredWorkdays`).
+
 # Unlogged Days / Weeks — Coverage Gap Design
 
 ## Problem
