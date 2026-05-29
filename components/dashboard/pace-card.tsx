@@ -5,6 +5,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { cn } from "@/lib/utils"
 import { fmt, type Metrics } from "@/lib/calculations"
 import { useStore } from "@/lib/store"
+import { CoverageNote } from "./coverage-note"
 
 export function PaceCard({ metrics }: { metrics: Metrics }) {
   const { paceMode, setPaceMode } = useStore()
@@ -42,12 +43,7 @@ export function PaceCard({ metrics }: { metrics: Metrics }) {
         />
         <Bar label="Required pace" value={required} max={max} colorClass="bg-primary" />
 
-        {metrics.uncoveredWorkdays > 0 && (
-          <p className="text-xs text-muted-foreground">
-            Pace based on logged days only · ~{Math.max(1, Math.round(metrics.uncoveredWorkdays / 5))} weeks
-            not yet logged
-          </p>
-        )}
+        <CoverageNote metrics={metrics} />
 
         <p className="text-pretty text-sm leading-relaxed text-muted-foreground">
           {required <= 0 ? (

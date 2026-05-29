@@ -2,16 +2,13 @@
 
 A billable-hours tracker that keeps you on pace toward your annual billable-hour goal. Log hours, plan time off, and forecast where you'll land at year-end.
 
-BonusTrak runs entirely in the browser — all data lives in `localStorage`, so there is no account, no server, and nothing leaves your device.
-
 ## Features
 
 - **Goal tracking** — set an annual billable-hour target and a fiscal year window.
 - **Flexible logging** — record hours as daily, weekly, or monthly entries.
 - **Time off** — add vacation, personal days, holidays, and other time off so they're excluded from your required-pace math.
 - **Live forecast** — see projected year-end hours, variance against target, and whether you're ahead, on, or behind pace.
-- **Two pace modes** — compare a *trailing* (last 4 weeks) pace against a *year-to-date* pace.
-- **PWA-ready** — installable with app icons and a web manifest; dark mode included.
+- **Two pace modes** — compare a _trailing_ (last 4 weeks) pace against a _year-to-date_ pace.
 
 ## Tech stack
 
@@ -28,34 +25,32 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). On first load you'll be prompted to set up your goal.
+Open [http://localhost:3000](http://localhost:3000). Sign in with Google OAuth; an admin must link your login in Supabase before you gain access. Once linked, you'll be prompted to set up your goal.
 
 ## Scripts
 
-| Command | Description |
-| --- | --- |
-| `npm run dev` | Start the dev server |
-| `npm run build` | Production build |
+| Command         | Description                |
+| --------------- | -------------------------- |
+| `npm run dev`   | Start the dev server       |
+| `npm run build` | Production build           |
 | `npm run start` | Serve the production build |
-| `npm run lint` | Run ESLint |
+| `npm run lint`  | Run ESLint                 |
 
 ## Project structure
 
 ```
 app/                  App Router routes (dashboard + /settings) and layout
 components/
+  auth/               Google OAuth and authentication flows
   dashboard/          Progress, pace, and forecast cards
   settings/           Goal, hours-log, and time-off editors
   ui/                 shadcn/ui primitives
 lib/
-  store.tsx           React Context store, localStorage persistence
+  store.tsx           React Context store with Supabase persistence
+  supabase.ts         Supabase client and authentication
   calculations.ts     Pace/forecast metrics
   dates.ts            Timezone-safe "YYYY-MM-DD" date helpers
   types.ts            Core domain types
 hooks/                Reusable React hooks
 public/               Icons, manifest, static assets
 ```
-
-## Data & privacy
-
-All state is persisted in the browser under the `bonustrak:` `localStorage` keys. Clearing site data resets the app. There is no backend.

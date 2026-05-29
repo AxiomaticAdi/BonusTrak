@@ -4,6 +4,7 @@ import { TrendingUp, TrendingDown, Flag, CalendarRange } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 import { fmt, fmtInt, type Metrics } from "@/lib/calculations"
+import { CoverageNote } from "./coverage-note"
 
 export function ForecastCard({ metrics }: { metrics: Metrics }) {
   const ahead = metrics.variance >= 0
@@ -27,12 +28,7 @@ export function ForecastCard({ metrics }: { metrics: Metrics }) {
           </div>
         </div>
 
-        {metrics.uncoveredWorkdays > 0 && (
-          <p className="text-xs text-muted-foreground">
-            Based on logged days only · ~{Math.max(1, Math.round(metrics.uncoveredWorkdays / 5))} weeks
-            not yet logged
-          </p>
-        )}
+        <CoverageNote metrics={metrics} />
 
         <div
           className={cn(
