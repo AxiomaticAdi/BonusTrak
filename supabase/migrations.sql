@@ -29,40 +29,12 @@
 
 
 -- ----------------------------------------------------------------------------
--- Migration: 001 — create_user_data
+-- Migration: 001 — create_schema
 -- Date: 2026-05-29
--- Why: BonusTrak persistence. One row per authenticated user holding that
---      user's entire AppData envelope (goal + entries + timeOff) as a single
---      JSON blob, plus their pace_mode.
--- ----------------------------------------------------------------------------
-
--- One row per user. user_id is both PK and FK to Supabase's auth.users;
--- ON DELETE CASCADE removes a user's data if their auth account is deleted.
-create table user_data (
-  user_id    uuid primary key references auth.users(id) on delete cascade,
-  data       jsonb not null default '{"goal":null,"entries":[],"timeOff":[]}',
-  pace_mode  text  not null default 'trailing',
-  updated_at timestamptz not null default now()
-);
-
--- Row-Level Security: the database itself enforces that a logged-in user can
--- only read/write their OWN row. This is why shipping the client (publishable)
--- key in the browser is safe.
-alter table user_data enable row level security;
-
-create policy "own row" on user_data
-  for all
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
-
-
--- ----------------------------------------------------------------------------
--- Migration: 002 — decouple_logins_from_users
--- Date: 2026-05-29
--- Why: Support Google OAuth + "many logins → one person". Drop the auth-coupled
---      user_data table; a `users` row owns the data, reached via one or more
---      `logins` rows that map Supabase auth identities to that user. Existing
---      data is DISCARDED (no migration), per the approved design.
+-- Why: BonusTrak persistence with Google OAuth + "many logins → one person".
+--      A `users` row owns the data (the whole AppData envelope as JSON plus a
+--      pace_mode), reached via one or more `logins` rows that map Supabase auth
+--      identities to that user.
 --
 --      Two concepts, named to match the real scenario:
 --        users  — the PERSON whose hours are tracked (e.g. my wife). Owns data.
@@ -70,13 +42,11 @@ create policy "own row" on user_data
 --      Supabase's built-in credential table is auth.users; our public.users (the
 --      person) is distinct, so logins references the credential via auth_user_id.
 --
--- Rerunnable: drops the new tables/policies first so a partial dashboard run can
+-- Rerunnable: drops the tables/policies first so a partial dashboard run can
 -- be re-applied cleanly.
 -- ----------------------------------------------------------------------------
 
-drop table if exists user_data;
-drop table if exists logins;
-drop table if exists users;
+
 
 -- The person whose hours are tracked. Owns the data. (e.g. my wife)
 create table users (
