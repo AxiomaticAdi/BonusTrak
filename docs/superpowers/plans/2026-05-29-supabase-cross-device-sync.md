@@ -20,6 +20,7 @@
 - **Git:** the project **is** already a git repository and `.gitignore:18-19` already ignores `.env.local`. Commit steps are real; nothing special to set up.
 - All localStorage code is being **removed**, not kept as a fallback (per spec).
 - The store's public interface gains exactly one field, `online: boolean`. All existing mutation signatures are unchanged. One consumer area (settings) needs a hydration gate — see Task 9.
+- **Setup already done:** the Supabase project exists and `.env.local` is populated with the real URL + publishable key (Task 2 Step 5 ✅). The remaining Task 2 dashboard steps (SQL table + RLS, disable sign-ups, redirect URL, create the two users — Steps 1-4) must be confirmed before Task 12 runtime verification; the code tasks (1, 3-11) do not depend on them.
 
 ---
 
@@ -31,7 +32,7 @@
 - **Create** `components/auth/auth-gate.tsx` — loading / login / app switch.
 - **Create** `components/offline-indicator.tsx` — fixed banner shown when offline.
 - **Create** `components/settings/settings-content.tsx` — client wrapper gating settings sections on `hydrated`.
-- **Create** `.env.local` — Supabase URL + anon key (already gitignored).
+- ~~**Create** `.env.local`~~ — **already created & populated** with real URL + publishable key (gitignored, untracked). Do not overwrite.
 - **Modify** `lib/store.tsx` — swap localStorage for Supabase load/save; add `online`, dirty-guard, retry, reconnect sync.
 - **Modify** `app/layout.tsx` — wrap tree in `SupabaseProvider` → `AuthGate`, add `OfflineIndicator`.
 - **Modify** `app/settings/page.tsx` — render `SettingsContent` instead of the three sections directly.
@@ -120,16 +121,14 @@ In Authentication → URL Configuration, add redirect URLs: `http://localhost:30
 
 In Authentication → Users → "Add user", create the two accounts (email + "Auto Confirm User"). These are the only emails that can request a working magic link.
 
-- [ ] **Step 5: Write `.env.local`**
+- [x] **Step 5: Write `.env.local` — ALREADY DONE**
 
-Create `.env.local` (real values):
-
-```
-NEXT_PUBLIC_SUPABASE_URL=https://YOUR-PROJECT.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR-ANON-KEY
-```
-
-(No gitignore step needed — `.gitignore:18-19` already lists `.env.local` and `.env.*.local`. Optionally confirm with `git check-ignore .env.local` → expect `.env.local`.)
+`.env.local` is **already created and populated** with the real `NEXT_PUBLIC_SUPABASE_URL`
+and `NEXT_PUBLIC_SUPABASE_ANON_KEY` (a `sb_publishable_…` key — Supabase's newer
+client-side key, which is the correct value for this var). It is gitignored
+(`.gitignore:18-19`) and untracked. **Do not recreate or overwrite it.** Confirm only:
+`git check-ignore .env.local` → expect `.env.local`, and that the file has both
+non-placeholder values.
 
 ---
 

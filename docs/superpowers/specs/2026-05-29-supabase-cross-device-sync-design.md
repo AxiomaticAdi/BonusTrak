@@ -178,9 +178,10 @@ The one genuinely new surface, since the network can be slow or fail:
 ## Config & deployment
 
 - Env vars (both public — the anon key is safe client-side because RLS enforces
-  access):
+  access). **Already set up** in `.env.local` (gitignored, untracked):
   - `NEXT_PUBLIC_SUPABASE_URL`
-  - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+  - `NEXT_PUBLIC_SUPABASE_ANON_KEY` (holds a `sb_publishable_…` key — Supabase's
+    newer client-side key; equivalent to the legacy `anon` JWT for this var)
 - Add dependency: `@supabase/supabase-js`.
   (`@supabase/ssr` is **not** needed for this client-only design.)
 - Supabase dashboard:
