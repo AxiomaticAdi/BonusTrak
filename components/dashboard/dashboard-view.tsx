@@ -11,6 +11,7 @@ import { SetupPrompt } from "./setup-prompt"
 import { ProgressCard } from "./progress-card"
 import { PaceCard } from "./pace-card"
 import { ForecastCard } from "./forecast-card"
+import { PaceHistoryCard } from "./pace-history-card"
 
 export function DashboardView() {
   const { data, paceMode, hydrated } = useStore()
@@ -67,6 +68,8 @@ export function DashboardView() {
         <PaceCard metrics={metrics} />
         <ForecastCard metrics={metrics} />
       </div>
+
+      <PaceHistoryCard data={data} goal={data.goal} />
     </div>
   )
 }

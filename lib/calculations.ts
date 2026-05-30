@@ -11,11 +11,32 @@ import {
   maxISO,
   minISO,
   mondayOf,
+  monthName,
   parseISODate,
   todayISO,
 } from "./dates"
 
 export type PaceStatus = "ahead" | "on" | "behind"
+
+export type PaceGranularity = "week" | "month"
+
+/** One period (week or month) in the pace-history visualization. */
+export interface PacePeriod {
+  /** Stable React key: the period's raw start ISO date. */
+  key: string
+  /** Short label, e.g. "May 5" (week) or "May" (month). */
+  label: string
+  /** In-window logged hours, clipped to the goal window and to today. */
+  logged: number
+  /** Flat-rate hours needed in this period: flatPerWorkday × period workdays. */
+  needed: number
+  /** Mon–Fri minus time off, clipped to the goal window and today. */
+  workdays: number
+  /** Logged vs needed, with a dead-band so near-equal reads as "on". */
+  status: PaceStatus
+  /** True for the period containing the real "now" (in progress). */
+  current: boolean
+}
 
 export interface Metrics {
   target: number
@@ -264,6 +285,114 @@ export function computeMetrics(data: AppData, goal: Goal, paceMode: PaceMode, no
     lastCoveredDate,
     trailingGapWorkdays,
   }
+}
+
+/** Raw calendar span of a period, before clipping to the goal window/today. */
+interface RawSpan {
+  rawStart: string
+  rawEnd: string
+}
+
+/** Monday-anchored week spans from `start` up to the week containing `end`. */
+function weekSpans(start: string, end: string): RawSpan[] {
+  const spans: RawSpan[] = []
+  let monday = mondayOf(start)
+  let guard = 0
+  while (monday <= end && guard < 1000) {
+    spans.push({ rawStart: monday, rawEnd: addDays(monday, 6) })
+    monday = addDays(monday, 7)
+    guard++
+  }
+  return spans
+}
+
+/** Calendar-month spans from `start`'s month up to the month containing `end`. */
+function monthSpans(start: string, end: string): RawSpan[] {
+  const spans: RawSpan[] = []
+  const startDate = parseISODate(start)
+  let year = startDate.getFullYear()
+  let month = startDate.getMonth() // 0-indexed
+  let guard = 0
+  while (guard < 1000) {
+    const monthStr = `${year}-${String(month + 1).padStart(2, "0")}`
+    const rawStart = `${monthStr}-01`
+    if (rawStart > end) break
+    spans.push({ rawStart, rawEnd: lastOfMonth(monthStr) })
+    if (month === 11) {
+      month = 0
+      year++
+    } else {
+      month++
+    }
+    guard++
+  }
+  return spans
+}
+
+/**
+ * Per-period (week or month) logged-vs-needed history for the goal year so far.
+ *
+ * Each period's `needed` is a flat rate — `goal.target / totalWorkdaysInYear` times
+ * the period's own workdays — so time off is accounted for twice over: it shrinks the
+ * year denominator (raising the rate) and shrinks each affected period's target.
+ * `logged` reuses the same span-distribution (`sumHours`) as `computeMetrics`, so the
+ * periods sum to `completedToDate`.
+ */
+export function computePaceHistory(
+  data: AppData,
+  goal: Goal,
+  granularity: PaceGranularity,
+  now = todayISO(),
+): PacePeriod[] {
+  // Guard on the RAW now, before any clamp: nothing to show before the year starts
+  // or without a positive, achievable target.
+  if (goal.target <= 0) return []
+  if (now < goal.startDate) return []
+
+  const offSet = timeOffDateSet(data.timeOff)
+  const totalWorkdays = countWorkdays(goal.startDate, goal.endDate, offSet)
+  if (totalWorkdays === 0) return []
+
+  const flatPerWorkday = goal.target / totalWorkdays
+  const today = minISO(now, goal.endDate)
+
+  const spans = granularity === "week" ? weekSpans(goal.startDate, today) : monthSpans(goal.startDate, today)
+
+  const periods: PacePeriod[] = []
+  for (const { rawStart, rawEnd } of spans) {
+    const winStart = maxISO(rawStart, goal.startDate)
+    const winEnd = minISO(rawEnd, today)
+    if (winStart > winEnd) continue
+
+    const logged = sumHours(data.entries, winStart, winEnd, offSet)
+    const workdays = countWorkdays(winStart, winEnd, offSet)
+    const needed = flatPerWorkday * workdays
+
+    const eps = Math.max(needed * 0.01, 0.05)
+    let status: PaceStatus
+    if (needed <= 0) {
+      status = logged > eps ? "ahead" : "on"
+    } else if (logged > needed + eps) {
+      status = "ahead"
+    } else if (logged < needed - eps) {
+      status = "behind"
+    } else {
+      status = "on"
+    }
+
+    periods.push({
+      key: rawStart,
+      label: granularity === "week" ? formatShort(rawStart) : monthName(rawStart),
+      logged,
+      needed,
+      workdays,
+      status,
+      // The in-progress period contains the real now (not the clamped today), so a
+      // past goal year leaves nothing marked current.
+      current: now >= rawStart && now <= rawEnd,
+    })
+  }
+  return periods
 }
 
 export function fmt(n: number, digits = 1): string {
